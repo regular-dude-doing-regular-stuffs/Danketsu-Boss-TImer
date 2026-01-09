@@ -260,10 +260,12 @@ function updateTimers() {
   renderTimers();
 }
 
-
-document.getElementById("sort").addEventListener("change",renderTimers);
 setInterval(updateTimers, 1000);
 
+
+document.getElementById("sort").addEventListener("change",renderTimers);
+
+  
 loadTimers();
 setInterval(async () => {
   const res = await fetch(API_URL);
@@ -283,6 +285,7 @@ window.addEventListener('online',flushOfflineQueue);
 
 </body>
 </html>
+
 
 
 
