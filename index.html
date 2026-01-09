@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Respawn Timers</title>
+
+<style>
+:root {
+  --bg: #0e0e0e;
+  --card: #1c1c1c;
+  --text: #ffffff;
+  --warning: #5a4a00;
+  --critical: #5a0000;
+  --button: #c0392b;
+}
+
+.light {
+  --bg: #f5f5f5;
+  --card: #ffffff;
+  --text: #111111;
+  --warning: #fff3cd;
+  --critical: #f8d7da;
+  --button: #d9534f;
+}
+
+body {
+  margin: 0;
+  padding: 12px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, sans-serif;
+}
+
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+h1 {
+  font-size: 1.4rem;
+}
+
+.controls {
+  display: flex;
+  gap: 6px;
+}
+
+select, button.toggle {
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+}
+
+.timer {
+  background: var(--card);
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.timer.warning {
+  background: var(--warning);
+}
+
+.timer.critical {
+  background: var(--critical);
+  animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.6; }
+  100% { opacity: 1; }
+}
+
+.timer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.name {
+  font-weight: 700;
+  font-size: 1.2rem;
+}
+
+.cycles {
+  font-size: 0.85rem;
+  opacity: 0.7;
+}
+
+.time {
+  text-align: center;
+  font-size: 2.4rem;
+  font-weight: 800;
+}
+
+.footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+button.kill {
+  background: var(--button);
+  color: white;
+  border: none;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-weight: 600;
+}
+</style>
+</head>
+
+<body>
+
+<header>
+  <h1>Respawn Timers</h1>
+  <div class="controls">
+    <select id="sort">
+      <option value="time">Soonest</option>
+      <option value="name">Name</option>
+      <option value="cycles">Cycles</option>
+    </select>
+    <button class="toggle" onclick="toggleTheme()">🌓</button>
+  </div>
+</header>
+
+<div id="timers"></div>
+
+<!-- SOUND -->
+<audio id="warnSound" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg"></audio>
+<audio id="critSound" src="https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg"></audio>
+
+<script>
+const API_URL = "YOUR_WEB_APP_URL";
+let timers = [];
+let alerted = {};
+
+const warnSound = document.getElementById("warnSound");
+const critSound = document.getElementById("critSound");
+
+function toggleTheme() {
+  document.body.classList.toggle("light");
+  localStorage.theme = document.body.classList.contains("light") ? "light" : "dark";
+}
+
+if (localStorage.theme === "light") {
+  document.body.classList.add("light");
+}
+
+async function loadTimers() {
+  const res = await fetch(API_URL);
+  timers = await res.json();
+  renderTimers();
+}
+
+function renderTimers() {
+  const sort = document.getElementById("sort").value;
+
+  const sorted = [...timers].sort((a, b) => {
+    if (sort === "time") return a.nextRespawn - b.nextRespawn;
+    if (sort === "name") return a.name.localeCompare(b.name);
+    if (sort === "cycles") return b.cyclesElapsed - a.cyclesElapsed;
+  });
+
+  document.getElementById("timers").innerHTML =
+    sorted.map(t => `
+      <div class="timer" data-id="${t.row}" data-end="${t.nextRespawn}">
+        <div class="timer-header">
+          <div class="name">${t.name}</div>
+          <div class="cycles">+${t.cyclesElapsed} min</div>
+        </div>
+        <div class="time">--:--</div>
+        <div class="footer">
+          <small>${new Date(t.nextRespawn).toLocaleTimeString()}</small>
+          <button class="kill" onclick="killTimer(${t.row})">Kill</button>
+        </div>
+      </div>
+    `).join("");
+}
+
+async function killTimer(row) {
+  if (!confirm("Confirm kill/reset timer?")) return;
+  await fetch(API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ row })
+  });
+  alerted[row] = false;
+  loadTimers();
+}
+
+setInterval(() => {
+  document.querySelectorAll(".timer").forEach(t => {
+    const end = Number(t.dataset.end);
+    const id = t.dataset.id;
+    const remaining = Math.max(0, end - Date.now());
+
+    const mins = Math.floor(remaining / 60000);
+    const secs = Math.floor((remaining % 60000) / 1000);
+
+    t.querySelector(".time").textContent =
+      `${mins}:${secs.toString().padStart(2, "0")}`;
+
+    t.classList.remove("warning", "critical");
+
+    if (remaining <= 60000) {
+      t.classList.add("critical");
+      if (!alerted[id]) {
+        critSound.play();
+        alerted[id] = true;
+      }
+    } else if (remaining <= 300000) {
+      t.classList.add("warning");
+      if (!alerted[id]) {
+        warnSound.play();
+        alerted[id] = true;
+      }
+    }
+  });
+}, 1000);
+
+document.getElementById("sort").addEventListener("change", renderTimers);
+
+loadTimers();
+setInterval(loadTimers, 30000);
+</script>
+
+</body>
+</html>
