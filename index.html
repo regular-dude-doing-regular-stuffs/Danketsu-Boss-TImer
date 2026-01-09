@@ -173,29 +173,40 @@ async function loadTimers(){
 }
 
 // Render timers
-function getRemaining(ms) {
-  const total = Math.max(0, Math.floor(ms / 1000));
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const s = total % 60;
-  return `${h}:${m.toString().padStart(2,"0")}:${s.toString().padStart(2,"0")}`;
+function renderTimers() {
+  const sort = document.getElementById("sort").value;
+  const now = Date.now();
+
+  let sorted = [...timers];
+
+  if (sort === "time") {
+    sorted.sort((a,b) => a.nextRespawn - b.nextRespawn);
+  } else if (sort === "name") {
+    sorted.sort((a,b) => a.name.localeCompare(b.name));
+  } else if (sort === "cycles") {
+    sorted.sort((a,b) => (b.cyclesElapsed||0) - (a.cyclesElapsed||0));
+  }
+
+  document.getElementById("timers").innerHTML = sorted.map(t => {
+    const remainingMs = t.nextRespawn - now;
+    const timeStr = getRemaining(remainingMs);
+
+    return `
+      <div class="timer">
+        <div class="timer-header">
+          <div class="name">${t.name}</div>
+          <div class="cycles">+${t.cyclesElapsed || 0} min</div>
+        </div>
+        <div class="time">${timeStr}</div>
+        <div class="footer">
+          <small>${new Date(t.nextRespawn).toLocaleTimeString()}</small>
+          <button class="kill" onclick="killTimer(${t.row})">Kill</button>
+        </div>
+      </div>
+    `;
+  }).join("");
 }
 
-
-  document.getElementById("timers").innerHTML = sorted.map(t=>`
-    <div class="timer" data-id="${t.row}" data-end="${t.nextRespawn}">
-      <div class="timer-header">
-        <div class="name">${t.name}</div>
-        <div class="cycles">+${t.cyclesElapsed} min</div>
-      </div>
-      <div class="time">--:--</div>
-      <div class="footer">
-        <small>${new Date(t.nextRespawn).toLocaleTimeString()}</small>
-        <button class="kill" onclick="killTimer(${t.row})">Kill</button>
-      </div>
-    </div>
-  `).join("");
-}
 
 // Kill/reset timer
 async function killTimer(row){
@@ -253,13 +264,25 @@ function updateTimers() {
 document.getElementById("sort").addEventListener("change",renderTimers);
 
 loadTimers();
-setInterval(loadTimers,30000);
+setInterval(async () => {
+  const res = await fetch(API_URL);
+  const fresh = await res.json();
+
+  fresh.forEach(f => {
+    const local = timers.find(t => t.row === f.row);
+    if (!local || f.nextRespawn > local.nextRespawn) {
+      Object.assign(local || {}, f);
+    }
+  });
+}, 30000);
+
 
 window.addEventListener('online',flushOfflineQueue);
 </script>
 
 </body>
 </html>
+
 
 
 
