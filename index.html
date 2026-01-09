@@ -260,11 +260,11 @@ function updateTimers() {
   renderTimers();
 }
 
-setInterval(updateTimers, 1000);
 
 
 document.getElementById("sort").addEventListener("change",renderTimers);
 
+setInterval(updateTimers, 1000);
   
 loadTimers();
 setInterval(async () => {
@@ -285,6 +285,7 @@ window.addEventListener('online',flushOfflineQueue);
 
 </body>
 </html>
+
 
 
 
