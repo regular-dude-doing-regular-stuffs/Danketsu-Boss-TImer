@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Respawn Timers</title>
 
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0e0e0e">
 <style>
 :root {
   --bg: #0e0e0e;
@@ -118,7 +120,6 @@ button.kill {
 }
 </style>
 </head>
-
 <body>
 
 <header>
@@ -135,11 +136,14 @@ button.kill {
 
 <div id="timers"></div>
 
-<!-- SOUND -->
 <audio id="warnSound" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg"></audio>
 <audio id="critSound" src="https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg"></audio>
 
 <script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('service-worker.js');
+}
+
 const API_URL = "YOUR_WEB_APP_URL";
 let timers = [];
 let alerted = {};
@@ -147,92 +151,90 @@ let alerted = {};
 const warnSound = document.getElementById("warnSound");
 const critSound = document.getElementById("critSound");
 
+// Theme toggle
 function toggleTheme() {
   document.body.classList.toggle("light");
   localStorage.theme = document.body.classList.contains("light") ? "light" : "dark";
 }
 
-if (localStorage.theme === "light") {
-  document.body.classList.add("light");
-}
+if (localStorage.theme === "light") document.body.classList.add("light");
 
+// Load timers
 async function loadTimers() {
-  const res = await fetch(API_URL);
-  timers = await res.json();
+  try {
+    const res = await fetch(API_URL);
+    timers = await res.json();
+    localStorage.setItem('timersCache', JSON.stringify(timers));
+  } catch(e) {
+    console.warn('Offline mode: using cached timers');
+    const cached = localStorage.getItem('timersCache');
+    if (cached) timers = JSON.parse(cached);
+  }
   renderTimers();
 }
 
+// Render
 function renderTimers() {
   const sort = document.getElementById("sort").value;
-
-  const sorted = [...timers].sort((a, b) => {
-    if (sort === "time") return a.nextRespawn - b.nextRespawn;
-    if (sort === "name") return a.name.localeCompare(b.name);
-    if (sort === "cycles") return b.cyclesElapsed - a.cyclesElapsed;
+  const sorted = [...timers].sort((a,b)=>{
+    if(sort==='time') return a.nextRespawn-b.nextRespawn;
+    if(sort==='name') return a.name.localeCompare(b.name);
+    if(sort==='cycles') return b.cyclesElapsed-a.cyclesElapsed;
   });
 
-  document.getElementById("timers").innerHTML =
-    sorted.map(t => `
-      <div class="timer" data-id="${t.row}" data-end="${t.nextRespawn}">
-        <div class="timer-header">
-          <div class="name">${t.name}</div>
-          <div class="cycles">+${t.cyclesElapsed} min</div>
-        </div>
-        <div class="time">--:--</div>
-        <div class="footer">
-          <small>${new Date(t.nextRespawn).toLocaleTimeString()}</small>
-          <button class="kill" onclick="killTimer(${t.row})">Kill</button>
-        </div>
+  document.getElementById("timers").innerHTML = sorted.map(t=>`
+    <div class="timer" data-id="${t.row}" data-end="${t.nextRespawn}">
+      <div class="timer-header">
+        <div class="name">${t.name}</div>
+        <div class="cycles">+${t.cyclesElapsed} min</div>
       </div>
-    `).join("");
+      <div class="time">--:--</div>
+      <div class="footer">
+        <small>${new Date(t.nextRespawn).toLocaleTimeString()}</small>
+        <button class="kill" onclick="killTimer(${t.row})">Kill</button>
+      </div>
+    </div>
+  `).join("");
 }
 
+// Kill timer
 async function killTimer(row) {
-  if (!confirm("Confirm kill/reset timer?")) return;
-  await fetch(API_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ row })
-  });
-  alerted[row] = false;
+  if(!confirm("Confirm kill/reset timer?")) return;
+  try{
+    await fetch(API_URL,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({row})
+    });
+  }catch(e){console.warn('Offline: cannot sync kill')}
+  alerted[row]=false;
   loadTimers();
 }
 
-setInterval(() => {
-  document.querySelectorAll(".timer").forEach(t => {
+// Countdown and warnings
+setInterval(()=>{
+  document.querySelectorAll(".timer").forEach(t=>{
     const end = Number(t.dataset.end);
     const id = t.dataset.id;
-    const remaining = Math.max(0, end - Date.now());
-
-    const mins = Math.floor(remaining / 60000);
-    const secs = Math.floor((remaining % 60000) / 1000);
-
-    t.querySelector(".time").textContent =
-      `${mins}:${secs.toString().padStart(2, "0")}`;
-
-    t.classList.remove("warning", "critical");
-
-    if (remaining <= 60000) {
-      t.classList.add("critical");
-      if (!alerted[id]) {
-        critSound.play();
-        alerted[id] = true;
-      }
-    } else if (remaining <= 300000) {
-      t.classList.add("warning");
-      if (!alerted[id]) {
-        warnSound.play();
-        alerted[id] = true;
-      }
+    const remaining = Math.max(0,end-Date.now());
+    const mins = Math.floor(remaining/60000);
+    const secs = Math.floor((remaining%60000)/1000);
+    t.querySelector(".time").textContent = `${mins}:${secs.toString().padStart(2,'0')}`;
+    t.classList.remove('warning','critical');
+    if(remaining<=60000){
+      t.classList.add('critical');
+      if(!alerted[id]){critSound.play();alerted[id]=true;}
+    }else if(remaining<=300000){
+      t.classList.add('warning');
+      if(!alerted[id]){warnSound.play();alerted[id]=true;}
     }
   });
-}, 1000);
+},1000);
 
-document.getElementById("sort").addEventListener("change", renderTimers);
+document.getElementById("sort").addEventListener("change",renderTimers);
 
 loadTimers();
-setInterval(loadTimers, 30000);
+setInterval(loadTimers,30000);
 </script>
-
 </body>
 </html>
