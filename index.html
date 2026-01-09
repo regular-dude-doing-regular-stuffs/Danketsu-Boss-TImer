@@ -142,7 +142,7 @@ button.kill {
 <script>
 if('serviceWorker' in navigator) navigator.serviceWorker.register('service-worker.js');
 
-const API_URL = "https://script.google.com/u/0/home/projects/1TMrVhvdYaCQsm0eHtvv3Lj2RsXEuxGWy05ClX_wpHTQjG_e59-IT_RS6/edit"; // Replace with your Apps Script URL
+const API_URL = "https://script.google.com/macros/s/AKfycbyNcp_e0xZXHI3C3wYSK38DM0mCK1yC2WnVjclrSwB_a9OWSVGuabfoYQ7lv4qeAIjU/exec"; // Replace with your Apps Script URL
 let timers = [];
 let alerted = {};
 let offlineQueue = JSON.parse(localStorage.getItem('offlineQueue')||'[]');
@@ -264,4 +264,5 @@ window.addEventListener('online',flushOfflineQueue);
 
 </body>
 </html>
+
 
