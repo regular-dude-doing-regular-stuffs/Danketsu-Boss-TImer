@@ -235,24 +235,19 @@ async function flushOfflineQueue(){
 }
 
 // Countdown & sound/visual alerts
-setInterval(()=>{
-  document.querySelectorAll(".timer").forEach(t=>{
-    const end = Number(t.dataset.end);
-    const id = t.dataset.id;
-    const remaining = Math.max(0,end-Date.now());
-    const mins = Math.floor(remaining/60000);
-    const secs = Math.floor((remaining%60000)/1000);
-    t.querySelector(".time").textContent=`${mins}:${secs.toString().padStart(2,'0')}`;
-    t.classList.remove('warning','critical');
-    if(remaining<=60000){
-      t.classList.add('critical');
-      if(!alerted[id]){critSound.play();alerted[id]=true;}
-    }else if(remaining<=300000){
-      t.classList.add('warning');
-      if(!alerted[id]){warnSound.play();alerted[id]=true;}
+function updateTimers() {
+  const now = Date.now();
+
+  timers.forEach(t => {
+    while (now >= t.nextRespawn) {
+      t.nextRespawn += t.durationSeconds * 1000;
+      t.cyclesElapsed = (t.cyclesElapsed || 0) + 1;
     }
   });
-},1000);
+
+  renderTimers();
+}
+
 
 document.getElementById("sort").addEventListener("change",renderTimers);
 
@@ -264,6 +259,7 @@ window.addEventListener('online',flushOfflineQueue);
 
 </body>
 </html>
+
 
 
 
