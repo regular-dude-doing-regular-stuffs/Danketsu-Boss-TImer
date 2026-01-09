@@ -140,13 +140,12 @@ button.kill {
 <audio id="critSound" src="https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg"></audio>
 
 <script>
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('service-worker.js');
-}
+if('serviceWorker' in navigator) navigator.serviceWorker.register('service-worker.js');
 
-const API_URL = "YOUR_WEB_APP_URL";
+const API_URL = "YOUR_WEB_APP_URL"; // Replace with your Apps Script URL
 let timers = [];
 let alerted = {};
+let offlineQueue = JSON.parse(localStorage.getItem('offlineQueue')||'[]');
 
 const warnSound = document.getElementById("warnSound");
 const critSound = document.getElementById("critSound");
@@ -154,27 +153,27 @@ const critSound = document.getElementById("critSound");
 // Theme toggle
 function toggleTheme() {
   document.body.classList.toggle("light");
-  localStorage.theme = document.body.classList.contains("light") ? "light" : "dark";
+  localStorage.theme = document.body.classList.contains("light")?"light":"dark";
 }
 
-if (localStorage.theme === "light") document.body.classList.add("light");
+if(localStorage.theme==="light") document.body.classList.add("light");
 
-// Load timers
-async function loadTimers() {
-  try {
+// Load timers (online-first, fallback offline)
+async function loadTimers(){
+  try{
     const res = await fetch(API_URL);
     timers = await res.json();
-    localStorage.setItem('timersCache', JSON.stringify(timers));
-  } catch(e) {
-    console.warn('Offline mode: using cached timers');
+    localStorage.setItem('timersCache',JSON.stringify(timers));
+    await flushOfflineQueue(); // sync any queued kills
+  }catch(e){
     const cached = localStorage.getItem('timersCache');
-    if (cached) timers = JSON.parse(cached);
+    if(cached) timers = JSON.parse(cached);
   }
   renderTimers();
 }
 
-// Render
-function renderTimers() {
+// Render timers
+function renderTimers(){
   const sort = document.getElementById("sort").value;
   const sorted = [...timers].sort((a,b)=>{
     if(sort==='time') return a.nextRespawn-b.nextRespawn;
@@ -197,8 +196,8 @@ function renderTimers() {
   `).join("");
 }
 
-// Kill timer
-async function killTimer(row) {
+// Kill/reset timer
+async function killTimer(row){
   if(!confirm("Confirm kill/reset timer?")) return;
   try{
     await fetch(API_URL,{
@@ -206,12 +205,36 @@ async function killTimer(row) {
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({row})
     });
-  }catch(e){console.warn('Offline: cannot sync kill')}
+  }catch(e){
+    // queue offline
+    offlineQueue.push({row:row});
+    localStorage.setItem('offlineQueue',JSON.stringify(offlineQueue));
+    console.warn('Offline: kill queued');
+  }
   alerted[row]=false;
   loadTimers();
 }
 
-// Countdown and warnings
+// Flush offline queue
+async function flushOfflineQueue(){
+  if(!navigator.onLine) return;
+  while(offlineQueue.length){
+    const req = offlineQueue.shift();
+    try{
+      await fetch(API_URL,{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({row:req.row})
+      });
+    }catch(e){
+      offlineQueue.unshift(req);
+      break;
+    }
+  }
+  localStorage.setItem('offlineQueue',JSON.stringify(offlineQueue));
+}
+
+// Countdown & sound/visual alerts
 setInterval(()=>{
   document.querySelectorAll(".timer").forEach(t=>{
     const end = Number(t.dataset.end);
@@ -219,7 +242,7 @@ setInterval(()=>{
     const remaining = Math.max(0,end-Date.now());
     const mins = Math.floor(remaining/60000);
     const secs = Math.floor((remaining%60000)/1000);
-    t.querySelector(".time").textContent = `${mins}:${secs.toString().padStart(2,'0')}`;
+    t.querySelector(".time").textContent=`${mins}:${secs.toString().padStart(2,'0')}`;
     t.classList.remove('warning','critical');
     if(remaining<=60000){
       t.classList.add('critical');
@@ -235,6 +258,9 @@ document.getElementById("sort").addEventListener("change",renderTimers);
 
 loadTimers();
 setInterval(loadTimers,30000);
+
+window.addEventListener('online',flushOfflineQueue);
 </script>
+
 </body>
 </html>
